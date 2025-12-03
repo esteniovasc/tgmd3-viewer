@@ -1,0 +1,94 @@
+{
+  "versaoSchema": "3.1",
+  
+  "infoProjeto": {
+    "nome": "Projeto TGMD Exemplo Completo",
+    "dataModificacao": "2025-11-20T10:32:00Z",
+    "isLocked": false,  // <<< NOVO: Estado de Bloqueio Global (UI)
+    "autor": "Avaliado pelo Sistema de IA"
+  },
+  
+  "participantes": [
+    {"id": "p1", "nome": "João M."},
+    {"id": "p2", "nome": "Maria A."},
+    {"id": "p3", "nome": "André S."},
+    {"id": "p4", "nome": "Bianca T."},
+    {"id": "p5", "nome": "Carlos F."},
+    {"id": "p6", "nome": "Diana R."},
+    {"id": "p7", "nome": "Eduardo C."},
+    {"id": "p8", "nome": "Fabiana G."},
+    {"id": "p9", "nome": "Gustavo M."},
+    {"id": "p10", "nome": "Helena V."}
+  ],
+
+  "arquivosDeVideo": [
+    {
+      "idInterno": "uuid-v1-a1b2",
+      "nomeArquivo": "coleta_corrida_01.mp4",
+      "caminhoRelativo": "coleta_corrida_01.mp4",
+      "metadadosVerificacao": {
+        "tamanhoBytes": 95123456,
+        "duracaoSegundos": 150.0
+      },
+      "rotulacoes": [
+        // Tentativas 1 a 3: Participante p1 (Corrida)
+        {"idRotulo": "r1", "habilidade": "Corrida", "tempoInicioLocal": 5.0, "duracao": 3.0, "idParticipante": "p1", "nTentativa": "teste", "observacoes": null},
+        {"idRotulo": "r2", "habilidade": "Corrida", "tempoInicioLocal": 10.0, "duracao": 3.5, "idParticipante": "p1", "nTentativa": "1", "observacoes": null},
+        {"idRotulo": "r3", "habilidade": "Corrida", "tempoInicioLocal": 15.0, "duracao": 3.1, "idParticipante": "p1", "nTentativa": "2", "observacoes": null},
+        
+        // Tentativas 4 a 6: Participante p2 (Galopar)
+        {"idRotulo": "r4", "habilidade": "Galopar", "tempoInicioLocal": 30.0, "duracao": 4.0, "idParticipante": "p2", "nTentativa": "teste", "observacoes": "Pulo longo"},
+        {"idRotulo": "r5", "habilidade": "Galopar", "tempoInicioLocal": 35.0, "duracao": 4.5, "idParticipante": "p2", "nTentativa": "1", "observacoes": null},
+        {"idRotulo": "r6", "habilidade": "Galopar", "tempoInicioLocal": 40.0, "duracao": 4.1, "idParticipante": "p2", "nTentativa": "2", "observacoes": null},
+
+        // Tentativas 7 a 9: Participante p3 (Saltar)
+        {"idRotulo": "r7", "habilidade": "Saltar", "tempoInicioLocal": 60.0, "duracao": 2.5, "idParticipante": "p3", "nTentativa": "teste", "observacoes": null},
+        {"idRotulo": "r8", "habilidade": "Saltar", "tempoInicioLocal": 65.0, "duracao": 2.2, "idParticipante": "p3", "nTentativa": "1", "observacoes": null},
+        {"idRotulo": "r9", "habilidade": "Saltar", "tempoInicioLocal": 70.0, "duracao": 2.7, "idParticipante": "p3", "nTentativa": "2", "observacoes": null}
+      ]
+    },
+
+    {
+      "idInterno": "uuid-v2-d4f6",
+      "nomeArquivo": "coleta_saltar_02.mp4",
+      "caminhoRelativo": "coleta_saltar_02.mp4",
+      "metadadosVerificacao": {
+        "tamanhoBytes": 70000000,
+        "duracaoSegundos": 100.0
+      },
+      "rotulacoes": [
+        // Tentativas 10 a 18: Participante p4 (Saltar) e p5 (Rebater)
+        {"idRotulo": "r10", "habilidade": "Saltar", "tempoInicioLocal": 10.0, "duracao": 2.0, "idParticipante": "p4", "nTentativa": "teste", "observacoes": null},
+        {"idRotulo": "r11", "habilidade": "Saltar", "tempoInicioLocal": 15.0, "duracao": 2.3, "idParticipante": "p4", "nTentativa": "1", "observacoes": null},
+        {"idRotulo": "r12", "habilidade": "Saltar", "tempoInicioLocal": 20.0, "duracao": 2.1, "idParticipante": "p4", "nTentativa": "2", "observacoes": null},
+        {"idRotulo": "r13", "habilidade": "Rebater com 2 mãos", "tempoInicioLocal": 40.0, "duracao": 4.0, "idParticipante": "p5", "nTentativa": "teste", "observacoes": null},
+        {"idRotulo": "r14", "habilidade": "Rebater com 2 mãos", "tempoInicioLocal": 45.0, "duracao": 4.5, "idParticipante": "p5", "nTentativa": "1", "observacoes": null},
+        {"idRotulo": "r15", "habilidade": "Rebater com 2 mãos", "tempoInicioLocal": 50.0, "duracao": 4.2, "idParticipante": "p5", "nTentativa": "2", "observacoes": null},
+        {"idRotulo": "r16", "habilidade": "Rebater com 2 mãos", "tempoInicioLocal": 55.0, "duracao": 4.1, "idParticipante": "p5", "nTentativa": "3", "observacoes": null},
+        {"idRotulo": "r17", "habilidade": "Rebater com 2 mãos", "tempoInicioLocal": 60.0, "duracao": 4.3, "idParticipante": "p5", "nTentativa": "4", "observacoes": null},
+        {"idRotulo": "r18", "habilidade": "Rebater com 2 mãos", "tempoInicioLocal": 65.0, "duracao": 4.0, "idParticipante": "p5", "nTentativa": "5", "observacoes": null}
+      ]
+    },
+
+    {
+      "idInterno": "uuid-v3-g8h9",
+      "nomeArquivo": "coleta_final_03.mp4",
+      "caminhoRelativo": "coleta_final_03.mp4",
+      "metadadosVerificacao": {
+        "tamanhoBytes": 12000000,
+        "duracaoSegundos": 80.0
+      },
+      "rotulacoes": [
+        // Tentativas 19 a 27: Participante p6 (Arremesso) e p7 (Saltar)
+        {"idRotulo": "r19", "habilidade": "Arremesso por cima", "tempoInicioLocal": 5.0, "duracao": 3.0, "idParticipante": "p6", "nTentativa": "teste", "observacoes": "Tag inicial para teste"},
+        {"idRotulo": "r20", "habilidade": "Arremesso por cima", "tempoInicioLocal": 10.0, "duracao": 3.2, "idParticipante": "p6", "nTentativa": "1", "observacoes": null},
+        {"idRotulo": "r21", "habilidade": "Arremesso por cima", "tempoInicioLocal": 15.0, "duracao": 3.1, "idParticipante": "p6", "nTentativa": "2", "observacoes": null},
+        {"idRotulo": "r22", "habilidade": "Arremesso por cima", "tempoInicioLocal": 20.0, "duracao": 3.5, "idParticipante": "p6", "nTentativa": "3", "observacoes": null},
+        {"idRotulo": "r23", "habilidade": "Arremesso por cima", "tempoInicioLocal": 25.0, "duracao": 3.0, "idParticipante": "p6", "nTentativa": "4", "observacoes": null},
+        {"idRotulo": "r24", "habilidade": "Saltar", "tempoInicioLocal": 40.0, "duracao": 2.5, "idParticipante": "p7", "nTentativa": "teste", "observacoes": null},
+        {"idRotulo": "r25", "habilidade": "Saltar", "tempoInicioLocal": 45.0, "duracao": 2.2, "idParticipante": "p7", "nTentativa": "1", "observacoes": null},
+        {"idRotulo": "r26", "habilidade": "Saltar", "tempoInicioLocal": 50.0, "duracao": 2.7, "idParticipante": "p7", "nTentativa": "2", "observacoes": null}
+      ]
+    }
+  ]
+}
