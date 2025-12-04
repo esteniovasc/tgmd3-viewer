@@ -55,10 +55,14 @@ class EditorWindow(QMainWindow):
         main_layout.addWidget(self.timeline)
 
         self.project_data = {}
+        self.project_file_path = None
 
-    def load_project_data(self, data):
+    def load_project_data(self, data, file_path=None):
         """Recebe os dados do JSON carregado e atualiza a UI"""
         self.project_data = data
+        if file_path:
+            self.project_file_path = file_path
+            
         name = data.get("infoProjeto", {}).get("nome", "Sem Nome")
         self.top_bar.set_project_name(name)
         # Futuro: self.timeline.set_data(...)
@@ -69,14 +73,38 @@ class EditorWindow(QMainWindow):
         self.close() # Fecha a janela do editor (a main vai mostrar a home)
 
     def save_project(self):
-        """Salva o projeto (Stub)"""
-        print("Salvando projeto...")
-        # Aqui entraria a lógica de escrever self.project_data no arquivo JSON
-        # Por enquanto, apenas simula
-        pass
+        """Salva o projeto no disco"""
+        import json
+        
+        # Se não tiver caminho do arquivo, não salva (ou pede Save As - futuro)
+        if not hasattr(self, 'project_file_path') or not self.project_file_path:
+            print("Erro: Caminho do arquivo não definido.")
+            return
+
+        try:
+            with open(self.project_file_path, "w", encoding="utf-8") as f:
+                json.dump(self.project_data, f, indent=2, ensure_ascii=False)
+            
+            self.top_bar.update_last_saved()
+            print("Projeto salvo com sucesso!")
+        except Exception as e:
+            print(f"Erro ao salvar projeto: {e}")
 
     def open_settings(self):
-        """Abre as configurações (Stub)"""
-        print("Abrindo configurações...")
-        # Aqui abriria o dialog de edição
-        pass
+        """Abre as configurações"""
+        from src.ui.dialogs.project_settings_dialog import ProjectSettingsDialog
+        
+        dialog = ProjectSettingsDialog(self.project_data, self)
+        dialog.settings_saved.connect(self.on_settings_saved)
+        dialog.exec()
+
+    def on_settings_saved(self, new_data):
+        """Chamado quando as configurações são salvas"""
+        self.project_data = new_data
+        
+        # Atualiza UI
+        name = new_data.get("infoProjeto", {}).get("nome", "Sem Nome")
+        self.top_bar.set_project_name(name)
+        
+        # Salva no disco
+        self.save_project()
