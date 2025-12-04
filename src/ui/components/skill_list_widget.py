@@ -6,7 +6,7 @@ from src.config import SKILLS
 class SkillListWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(350) # Largura fixa para o painel lateral
+        # self.setFixedWidth(350) # Removido para permitir layout responsivo 70/30
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -26,10 +26,6 @@ class SkillListWidget(QWidget):
         # --- Aba 2: Lista de Rotulações (Editor de Lista) ---
         tab_list = self._create_list_tab()
         self.tabs.addTab(tab_list, "📋 Lista de Rotulações")
-        
-        # --- Aba 3: Filtros ---
-        tab_filters = QWidget() # Placeholder
-        self.tabs.addTab(tab_filters, "Filtros")
 
         layout.addWidget(self.tabs)
 

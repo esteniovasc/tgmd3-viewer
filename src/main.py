@@ -78,7 +78,7 @@ def main():
     # --- CONECTA SINAIS ---
     
     # Splash -> Home
-    QTimer.singleShot(4000, show_home)
+    QTimer.singleShot(2000, show_home)
 
     # Home -> Criar
     home.create_project_clicked.connect(show_create_dialog)
