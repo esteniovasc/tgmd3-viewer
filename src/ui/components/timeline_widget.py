@@ -62,6 +62,15 @@ class TimelineWidget(QWidget):
         self.thumbnails = {}
         self.update()
 
+    def reset(self):
+        self.clips = []
+        self.annotations = []
+        self.thumbnails = {}
+        self.total_duration_display = 0
+        self.playhead_position_global = 0
+        self.pixels_per_second = 50.0 # Reset
+        self.update()
+
     def update_playhead_position(self, seconds):
         # Aqui seconds deve ser global (soma das durações anteriores + local)
         self.playhead_position_global = seconds

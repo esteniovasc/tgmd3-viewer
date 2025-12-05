@@ -96,6 +96,12 @@ class VideoPlayerWidget(QWidget):
         # Retorna para o Video Player
         self.stack.setCurrentIndex(1)
 
+    def reset(self):
+        self.player.stop()
+        self.player.setSource(QUrl())
+        self.hide_loading()
+        self.set_has_video(False)
+
     def load_video(self, file_path):
         self.player.setSource(QUrl.fromLocalFile(file_path))
 

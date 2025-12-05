@@ -262,9 +262,32 @@ class EditorWindow(QMainWindow):
         if not start_paused:
             self.video_player.play()
 
+    # --- LÓGICA DE LIMPEZA ---
+    def reset_ui_state(self):
+        """Reseta toda a interface para o estado inicial."""
+        self.video_player.reset()
+        self.timeline.reset()
+        
+        if hasattr(self, 'import_worker') and self.import_worker.isRunning():
+            self.import_worker.terminate()
+            
+        if hasattr(self, 'thumb_worker') and self.thumb_worker.isRunning():
+            self.thumb_worker.stop()
+            
+        self.project_data = {}
+        self.project_file_path = None
+        self.is_dirty = False
+        self.current_video_index = -1
+        self.top_bar.set_project_name("Sem Nome")
+        self.top_bar.set_dirty_state(False)
+
     def load_project_data(self, data, file_path=None):
+        """Recebe os dados do JSON carregado e atualiza a UI"""
+        self.reset_ui_state() # Limpa tudo antes de carregar
+        
         self.project_data = data
-        if file_path: self.project_file_path = file_path
+        if file_path:
+            self.project_file_path = file_path
             
         name = data.get("infoProjeto", {}).get("nome", "Sem Nome")
         self.top_bar.set_project_name(name)
@@ -274,11 +297,19 @@ class EditorWindow(QMainWindow):
             self.timeline.set_videos(videos)
             self.video_player.set_has_video(True)
             self.load_video_at_index(0)
+            
+            # Iniciar Thumbnails para projetos carregados
+            # (Adicionando aqui também para persistência funcionar ao carregar JSON)
+            self.thumb_worker = ThumbnailWorker(videos)
+            self.thumb_worker.thumbnail_generated.connect(self.on_thumbnail_generated)
+            self.thumb_worker.start()
 
     def on_home_clicked(self):
         if self.check_save_barrier():
+            self.reset_ui_state() # Limpa ao sair
             self.home_requested.emit()
             self.close()
+
 
     def save_project(self):
         import json
