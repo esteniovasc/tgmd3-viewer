@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QFileDialog, QProgressDialog, QMessageBox
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QFileDialog, QProgressDialog, QMessageBox, QScrollArea
 from PySide6.QtCore import Qt, Signal, QTimer
 
 # Componentes
@@ -83,13 +83,27 @@ class EditorWindow(QMainWindow):
         timeline_layout.setSpacing(0)
         
         self.track_headers = TrackHeaderWidget()
+        
+        # Scroll Area da Timeline
+        self.timeline_scroll = QScrollArea()
+        self.timeline_scroll.setWidgetResizable(True)
+        self.timeline_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.timeline_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.timeline_scroll.setStyleSheet("""
+            QScrollArea { border: none; background: #212121; }
+            QScrollBar:horizontal { height: 12px; background: #333; }
+            QScrollBar::handle:horizontal { background: #555; border-radius: 6px; min-width: 20px; }
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; }
+        """)
+        
         self.timeline = TimelineWidget()
+        self.timeline_scroll.setWidget(self.timeline)
         
         # Conexão crucial: Solicitação de Seek vinda da Timeline
         self.timeline.seek_requested.connect(self.handle_seek_request)
         
         timeline_layout.addWidget(self.track_headers, stretch=8)
-        timeline_layout.addWidget(self.timeline, stretch=92)
+        timeline_layout.addWidget(self.timeline_scroll, stretch=92) # Agora adiciona o Scroll
         
         main_layout.addWidget(timeline_area, stretch=25)
 
@@ -171,12 +185,37 @@ class EditorWindow(QMainWindow):
         # Atualiza o playhead visual imediatamente
         self.timeline.update_playhead_position(global_time)
         
+        # Auto-Scroll se necessário (clique fora da vista, embora o clique venha da vista...)
+        # Mas útil se o playback avançar
+        self.ensure_playhead_visible(global_time)
+        
         if video_index != self.current_video_index:
             # Troca de vídeo (Cross-Video Seek)
             self.load_video_at_index(video_index, start_paused=True, seek_time=local_time)
         else:
             # Mesmo vídeo, apenas seek local
             self.video_player.set_position(int(local_time * 1000))
+
+    def ensure_playhead_visible(self, global_time):
+        if not self.timeline.pixels_per_second: return
+            
+        playhead_x = global_time * self.timeline.pixels_per_second
+        
+        scroll_bar = self.timeline_scroll.horizontalScrollBar()
+        scroll_val = scroll_bar.value()
+        viewport_width = self.timeline_scroll.viewport().width()
+        
+        # Margem de segurança (90%)
+        visible_end = scroll_val + viewport_width
+        threshold = scroll_val + (viewport_width * 0.9)
+        
+        if playhead_x > threshold:
+             # Próxima página
+             target_scroll = scroll_val + (viewport_width * 0.95)
+             scroll_bar.setValue(int(target_scroll))
+        elif playhead_x < scroll_val:
+             # Retrocesso
+             scroll_bar.setValue(int(playhead_x - 50))
 
     def load_video_at_index(self, index, start_paused=True, seek_time=0.0):
         if index < 0 or index >= len(self.project_data.get("arquivosDeVideo", [])):
@@ -185,16 +224,15 @@ class EditorWindow(QMainWindow):
         videos = self.project_data["arquivosDeVideo"]
         video_data = videos[index]
         file_path = video_data["caminho"]
-        
         self.current_video_index = index
+        
+        # Conectar sinal de posição do player para atualizar a agulha e fazer auto-scroll
+        # self.video_player.position_changed.connect(...) <- Precisa expor
         
         # UI Feedback: Loading
         self.video_player.pause()
         self.video_player.show_loading(f"Carregando: {video_data['nome']}...")
         
-        # Simula delay para percepção de carregamento e evitar glitch (opcional, pode ser removido depois)
-        # QTimer.singleShot(500, lambda: self._perform_load(file_path, seek_time, start_paused))
-        # Para ser mais responsivo, vamos direto, mas o overlay mascara
         self._perform_load(file_path, seek_time, start_paused)
 
     def _perform_load(self, path, seek_time, start_paused):

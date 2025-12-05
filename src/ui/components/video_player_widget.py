@@ -51,46 +51,50 @@ class VideoPlayerWidget(QWidget):
         self.video_surface.setMinimumHeight(200) 
         
         self.video_layout.addWidget(self.video_surface)
+        self.stack.addWidget(self.video_container) # Index 1
         
-        # Overlay de Loading (Inicialmente escondido)
-        self.loading_overlay = QFrame(self.video_container)
-        self.loading_overlay.setStyleSheet("background-color: rgba(0, 0, 0, 180); border-radius: 8px;")
-        self.loading_overlay.hide()
-        
-        load_layout = QVBoxLayout(self.loading_overlay)
+        # --- Página 2: Loading (Dedicada) ---
+        self.loading_page = QWidget()
+        self.loading_page.setStyleSheet("background-color: #000; border-radius: 8px;")
+        load_layout = QVBoxLayout(self.loading_page)
         load_layout.setAlignment(Qt.AlignCenter)
-        self.lbl_loading = QLabel("Carregando...")
-        self.lbl_loading.setStyleSheet("color: white; font-size: 18px; font-weight: bold;")
-        load_layout.addWidget(self.lbl_loading)
-
-        self.stack.addWidget(self.video_container)
         
+        self.lbl_loading = QLabel("Carregando...")
+        self.lbl_loading.setStyleSheet("color: white; font-size: 24px; font-weight: bold;")
+        load_layout.addWidget(self.lbl_loading)
+        
+        spinner_placeholder = QLabel("⏳") # Futuro: QMovie
+        spinner_placeholder.setStyleSheet("color: #007ACC; font-size: 48px;")
+        spinner_placeholder.setAlignment(Qt.AlignCenter)
+        load_layout.addWidget(spinner_placeholder)
+        
+        self.stack.addWidget(self.loading_page) # Index 2
+
         # Mídia Player
         self.player = QMediaPlayer()
         self.audio = QAudioOutput()
         self.player.setAudioOutput(self.audio)
         self.player.setVideoOutput(self.video_surface)
-        self.audio.setVolume(0) # Mudo por padrão para performance/requisito
+        self.audio.setVolume(0)
 
         # Inicia no estado zero
         self.stack.setCurrentIndex(0)
 
     def resizeEvent(self, event):
-        if hasattr(self, 'loading_overlay'):
-            self.loading_overlay.resize(self.size())
         super().resizeEvent(event)
 
     def set_has_video(self, has_video: bool):
-        self.stack.setCurrentIndex(1 if has_video else 0)
+        # Se tiver vídeo mas não estiver carregando, vai pro player (1), senão zero (0)
+        if self.stack.currentIndex() != 2:
+            self.stack.setCurrentIndex(1 if has_video else 0)
 
     def show_loading(self, message="Carregando..."):
         self.lbl_loading.setText(message)
-        self.loading_overlay.resize(self.video_container.size())
-        self.loading_overlay.show()
-        self.loading_overlay.raise_()
+        self.stack.setCurrentIndex(2)
 
     def hide_loading(self):
-        self.loading_overlay.hide()
+        # Retorna para o Video Player
+        self.stack.setCurrentIndex(1)
 
     def load_video(self, file_path):
         self.player.setSource(QUrl.fromLocalFile(file_path))
