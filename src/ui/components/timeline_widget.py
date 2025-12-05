@@ -10,8 +10,8 @@ from config import (
 )
 
 class TimelineWidget(QWidget):
-    # (video_index, local_time, global_time)
-    seek_requested = Signal(int, float, float) # MODIFICADO: Passa index e local time
+    # (video_index, local_time, global_time, force_pause)
+    seek_requested = Signal(int, float, float, bool)
     
     clip_reorder_requested = Signal(int, int)
     clip_remove_requested = Signal(int)
@@ -203,37 +203,61 @@ class TimelineWidget(QWidget):
 
         painter.end()
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            x = event.position().x()
-            
-            # Converter X para Global Time
-            if self.pixels_per_second == 0: return
-            click_global_time = x / self.pixels_per_second
-            
-            # Identificar qual vídeo foi clicado
-            current_offset = 0.0
-            target_video_index = -1
-            local_time = 0.0
-            
-            for i, clip in enumerate(self.clips):
-                duration = clip.get('duracao', 0)
-                if current_offset <= click_global_time < (current_offset + duration):
-                    target_video_index = i
-                    local_time = click_global_time - current_offset
-                    break
-                current_offset += duration
-            
-            # Se clicou além do último vídeo (espaço vazio), selecionar o último frame do último vídeo
-            if target_video_index == -1 and self.clips:
-                 target_video_index = len(self.clips) - 1
-                 last_clip = self.clips[-1]
-                 local_time = last_clip.get('duracao', 0)
-            
-            if target_video_index != -1:
-                # Emitir sinal completo
-                self.seek_requested.emit(target_video_index, local_time, click_global_time)
+    def mouseMoveEvent(self, event):
+        # Feedback visual do cursor
+        if event.position().y() <= RULER_HEIGHT:
+            self.setCursor(Qt.PointingHandCursor)
+        else:
+            self.setCursor(Qt.ArrowCursor)
+        super().mouseMoveEvent(event)
 
-    # Manter stubs do resto para não quebrar interface se necessário, mas simplificar
+    def mousePressEvent(self, event):
+        # Clique Único
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Regra: Só faz seek imediato se for na Régua (Topo)
+            if event.position().y() <= RULER_HEIGHT:
+                self._process_seek(event.position().x(), force_pause=False)
+            else:
+                # Clique nos trilhos -> Ignorar seek, apenas seleção (futuro)
+                pass
+
+    def mouseDoubleClickEvent(self, event):
+        # Duplo Clique
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Regra: Se for nos trilhos, faz seek.
+            if event.position().y() > RULER_HEIGHT:
+                # Assumimos comportamento "Vazio/Thumb" -> force_pause=False
+                self._process_seek(event.position().x(), force_pause=False)
+
+    def _process_seek(self, mouse_x, force_pause):
+        if not self.clips: return
+
+        if self.pixels_per_second == 0: return # Evita divisão por zero
+        click_time = mouse_x / self.pixels_per_second
+        
+        current_dur_sum = 0
+        target_video_index = -1
+        local_time = 0
+        
+        # Achar em qual vídeo clicou
+        for i, clip in enumerate(self.clips):
+            dur = clip.get('duracao', 0) if isinstance(clip, dict) else clip.duration
+            if current_dur_sum <= click_time < current_dur_sum + dur:
+                target_video_index = i
+                local_time = click_time - current_dur_sum
+                break
+            current_dur_sum += dur
+            
+        # Se clicou após o último vídeo (espaço vazio final), pega o último
+        if target_video_index == -1 and self.clips:
+            target_video_index = len(self.clips) - 1
+            last_clip_dur = self.clips[-1].get('duracao', 0) if isinstance(self.clips[-1], dict) else self.clips[-1].duration
+            local_time = last_clip_dur
+            click_time = current_dur_sum # ou o tempo exato clicado, mas sem video? Vamos travar no final.
+            
+        if target_video_index != -1:
+            self.seek_requested.emit(target_video_index, local_time, click_time, force_pause)
+
+    # Manter stubs
     def dragEnterEvent(self, event): pass
     def dropEvent(self, event): pass

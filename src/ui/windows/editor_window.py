@@ -195,21 +195,25 @@ class EditorWindow(QMainWindow):
             super().keyPressEvent(event)
 
     # --- LÓGICA DE PLAYBACK E SEEK ---
-    def handle_seek_request(self, video_index, local_time, global_time):
-        print(f"Seek Solicitado: Vídeo {video_index} @ {local_time}s (Global: {global_time}s)")
+    def handle_seek_request(self, video_index, local_time, global_time, force_pause=False):
+        print(f"Seek Solicitado: Vídeo {video_index} @ {local_time}s (Global: {global_time}s) Pause={force_pause}")
         
         # Atualiza o playhead visual imediatamente
         self.timeline.update_playhead_position(global_time)
         
-        # Auto-Scroll se necessário (clique fora da vista, embora o clique venha da vista...)
-        # Mas útil se o playback avançar
+        # Auto-Scroll se necessário
         self.ensure_playhead_visible(global_time)
         
         if video_index != self.current_video_index:
             # Troca de vídeo (Cross-Video Seek)
+            # Ao trocar de vídeo, start_paused=True é o padrão seguro para evitar glitch,
+            # mas se force_pause for True, garantimos o pause. 
             self.load_video_at_index(video_index, start_paused=True, seek_time=local_time)
         else:
-            # Mesmo vídeo, apenas seek local
+            # Mesmo vídeo
+            if force_pause:
+                self.video_player.pause()
+                
             self.video_player.set_position(int(local_time * 1000))
 
     def ensure_playhead_visible(self, global_time):
