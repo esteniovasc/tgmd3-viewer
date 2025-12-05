@@ -25,9 +25,6 @@ class EditorWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         
         # Layout Principal (Vertical)
-        # 1. Top Bar (Fixo)
-        # 2. Workspace (68%)
-        # 3. Timeline (25%)
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
@@ -38,7 +35,7 @@ class EditorWindow(QMainWindow):
         self.top_bar.home_clicked.connect(self.on_home_clicked)
         self.top_bar.save_clicked.connect(self.save_project)
         self.top_bar.settings_clicked.connect(self.open_settings)
-        main_layout.addWidget(self.top_bar) # Altura fixa definida no componente
+        main_layout.addWidget(self.top_bar) 
 
         # --- 2. Workspace Area (Centro) ---
         workspace_area = QWidget()
@@ -55,8 +52,11 @@ class EditorWindow(QMainWindow):
         self.video_player = VideoPlayerWidget()
         self.video_controls = VideoControlsWidget()
         
-        left_layout.addWidget(self.video_player, stretch=91) # 91% altura
-        left_layout.addWidget(self.video_controls, stretch=9) # 9% altura
+        # Botões de Play/Pause deveriam ser conectados aqui
+        # self.video_controls.play_clicked.connect(self.video_player.play) # (TODO: Atualizar VideoControls)
+        
+        left_layout.addWidget(self.video_player, stretch=91)
+        left_layout.addWidget(self.video_controls, stretch=9)
         
         # Coluna Direita (30%)
         right_col = QWidget()
@@ -65,18 +65,15 @@ class EditorWindow(QMainWindow):
         right_layout.setSpacing(5)
         
         self.side_panel = SkillListWidget()
-        #self.side_panel.setFixedWidth(350) # Pode remover se quiser flexível, mas o widget tem fixo interno
-        # Vamos remover o fixed width interno do SkillListWidget depois para ser responsivo
-        
         self.export_panel = ExportPanelWidget()
         
-        right_layout.addWidget(self.side_panel, stretch=91) # 91% altura
-        right_layout.addWidget(self.export_panel, stretch=9) # 9% altura
+        right_layout.addWidget(self.side_panel, stretch=91)
+        right_layout.addWidget(self.export_panel, stretch=9)
 
         workspace_layout.addWidget(left_col, stretch=70)
         workspace_layout.addWidget(right_col, stretch=30)
         
-        main_layout.addWidget(workspace_area, stretch=68) # 68% da tela
+        main_layout.addWidget(workspace_area, stretch=68)
 
         # --- 3. Timeline Area (Rodapé) ---
         timeline_area = QWidget()
@@ -88,18 +85,28 @@ class EditorWindow(QMainWindow):
         self.track_headers = TrackHeaderWidget()
         self.timeline = TimelineWidget()
         
-        timeline_layout.addWidget(self.track_headers, stretch=8) # 8% largura
-        timeline_layout.addWidget(self.timeline, stretch=92) # 92% largura
+        # Conexão crucial: Solicitação de Seek vinda da Timeline
+        self.timeline.seek_requested.connect(self.handle_seek_request)
         
-        main_layout.addWidget(timeline_area, stretch=25) # 25% da tela
+        timeline_layout.addWidget(self.track_headers, stretch=8)
+        timeline_layout.addWidget(self.timeline, stretch=92)
+        
+        main_layout.addWidget(timeline_area, stretch=25)
 
         self.project_data = {}
         self.project_file_path = None
         self.is_dirty = False
         
+        # Estado de Playback Atual
+        self.current_video_index = -1
+        self.current_local_time = 0.0
+        
         # Conexões de Importação
         self.video_player.add_video_clicked.connect(self.start_import_video)
         self.track_headers.video_add_clicked.connect(self.start_import_video)
+        
+        # Conexões do Player (Media Status)
+        # self.video_player.player.mediaStatusChanged.connect(self.on_media_status_changed) # Precisa expor o player ou sinal
 
     def set_dirty(self, dirty: bool):
         self.is_dirty = dirty
@@ -112,41 +119,27 @@ class EditorWindow(QMainWindow):
             event.accept()
 
     def check_save_barrier(self) -> bool:
-        """Retorna True se puder fechar/sair, False se cancelado."""
         if not self.is_dirty:
             return True
-            
-        reply = QMessageBox.question(
-            self, "Alterações não salvas", 
-            "Há alterações não salvas no projeto. Deseja salvar antes de sair?",
-            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
-            QMessageBox.Save
-        )
-        
+        reply = QMessageBox.question(self, "Alterações não salvas", "Há alterações não salvas no projeto. Deseja salvar antes de sair?", QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel, QMessageBox.Save)
         if reply == QMessageBox.Save:
             self.save_project()
-            return True # Assumindo que save_project é síncrono ou sucesso garantido por enquanto
+            return True
         elif reply == QMessageBox.Discard:
             return True
         else:
             return False
 
     def start_import_video(self):
-        file_paths, _ = QFileDialog.getOpenFileNames(
-            self, "Importar Vídeos", "", "Arquivos de Vídeo (*.mp4 *.avi *.mov *.mkv)"
-        )
-        
-        if not file_paths:
-            return
+        file_paths, _ = QFileDialog.getOpenFileNames(self, "Importar Vídeos", "", "Arquivos de Vídeo (*.mp4 *.avi *.mov *.mkv)")
+        if not file_paths: return
             
-        # Modal de Progresso
         self.progress_dialog = QProgressDialog("Processando vídeos...", "Cancelar", 0, len(file_paths), self)
         self.progress_dialog.setWindowModality(Qt.WindowModal)
         self.progress_dialog.setWindowFlags(Qt.Dialog | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
         self.progress_dialog.setMinimumDuration(0)
         self.progress_dialog.setValue(0)
         
-        # Worker
         self.import_worker = VideoImportWorker(file_paths)
         self.import_worker.progress.connect(self.progress_dialog.setValue)
         self.import_worker.finished.connect(self.on_import_finished)
@@ -154,34 +147,79 @@ class EditorWindow(QMainWindow):
         
     def on_import_finished(self, new_videos):
         self.progress_dialog.close()
-        
-        if not new_videos:
-            return
+        if not new_videos: return
 
-        # Adicionar ao JSON Project Data
-        if "arquivosDeVideo" not in self.project_data:
-            self.project_data["arquivosDeVideo"] = []
-            
+        if "arquivosDeVideo" not in self.project_data: self.project_data["arquivosDeVideo"] = []
         self.project_data["arquivosDeVideo"].extend(new_videos)
         
-        # Atualizar Estado
         self.set_dirty(True)
-        self.video_player.set_has_video(True) # Simplesmente liga o player se tiver vídeo
+        self.video_player.set_has_video(True)
         
-        # TODO: Atualizar Timeline aqui
+        # Atualizar Timeline
+        self.timeline.set_videos(self.project_data["arquivosDeVideo"])
+        
+        # Se for o primeiro vídeo, carregar
+        if self.current_video_index == -1 and self.project_data["arquivosDeVideo"]:
+            self.load_video_at_index(0)
+        
         print(f"Importados {len(new_videos)} vídeos.")
 
+    # --- LÓGICA DE PLAYBACK E SEEK ---
+    def handle_seek_request(self, video_index, local_time, global_time):
+        print(f"Seek Solicitado: Vídeo {video_index} @ {local_time}s (Global: {global_time}s)")
+        
+        # Atualiza o playhead visual imediatamente
+        self.timeline.update_playhead_position(global_time)
+        
+        if video_index != self.current_video_index:
+            # Troca de vídeo (Cross-Video Seek)
+            self.load_video_at_index(video_index, start_paused=True, seek_time=local_time)
+        else:
+            # Mesmo vídeo, apenas seek local
+            self.video_player.set_position(int(local_time * 1000))
+
+    def load_video_at_index(self, index, start_paused=True, seek_time=0.0):
+        if index < 0 or index >= len(self.project_data.get("arquivosDeVideo", [])):
+            return
+
+        videos = self.project_data["arquivosDeVideo"]
+        video_data = videos[index]
+        file_path = video_data["caminho"]
+        
+        self.current_video_index = index
+        
+        # UI Feedback: Loading
+        self.video_player.pause()
+        self.video_player.show_loading(f"Carregando: {video_data['nome']}...")
+        
+        # Simula delay para percepção de carregamento e evitar glitch (opcional, pode ser removido depois)
+        # QTimer.singleShot(500, lambda: self._perform_load(file_path, seek_time, start_paused))
+        # Para ser mais responsivo, vamos direto, mas o overlay mascara
+        self._perform_load(file_path, seek_time, start_paused)
+
+    def _perform_load(self, path, seek_time, start_paused):
+        self.video_player.load_video(path)
+        self.video_player.set_position(int(seek_time * 1000))
+        
+        # Aguardar um buffer mínimo? 
+        # Por simplificação, removemos o loading após um curto delay para garantir renderização
+        QTimer.singleShot(800, self.video_player.hide_loading)
+        
+        if not start_paused:
+            self.video_player.play()
+
     def load_project_data(self, data, file_path=None):
-        """Recebe os dados do JSON carregado e atualiza a UI"""
         self.project_data = data
-        if file_path:
-            self.project_file_path = file_path
+        if file_path: self.project_file_path = file_path
             
         name = data.get("infoProjeto", {}).get("nome", "Sem Nome")
         self.top_bar.set_project_name(name)
         
-        # Passa dados para timeline (futuro)
-        # self.timeline.set_data(data.get("arquivosDeVideo", []), [])
+        videos = data.get("arquivosDeVideo", [])
+        if videos:
+            self.timeline.set_videos(videos)
+            self.video_player.set_has_video(True)
+            self.load_video_at_index(0)
 
     def on_home_clicked(self):
         if self.check_save_barrier():
@@ -191,16 +229,14 @@ class EditorWindow(QMainWindow):
     def save_project(self):
         import json
         if not hasattr(self, 'project_file_path') or not self.project_file_path:
-            # TODO: Implementar Save As se não tiver path
             print("Erro: Caminho do arquivo não definido.")
             return
 
         try:
             with open(self.project_file_path, "w", encoding="utf-8") as f:
                 json.dump(self.project_data, f, indent=2, ensure_ascii=False)
-            
             self.top_bar.update_last_saved()
-            self.set_dirty(False) # Limpa o estado dirty após salvar
+            self.set_dirty(False)
             print("Projeto salvo com sucesso!")
         except Exception as e:
             print(f"Erro ao salvar projeto: {e}")
