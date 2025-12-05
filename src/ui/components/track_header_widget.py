@@ -56,6 +56,7 @@ class TrackHeaderWidget(QWidget):
             btn_add = QPushButton("+")
             btn_add.setFixedSize(20, 20)
             btn_add.setCursor(Qt.PointingHandCursor)
+            btn_add.setFocusPolicy(Qt.NoFocus)
             # Verde sutil para ação positiva
             btn_add.setStyleSheet("""
                 QPushButton { background-color: #2E7D32; border: none; color: white; border-radius: 2px; }
@@ -68,6 +69,7 @@ class TrackHeaderWidget(QWidget):
         # Botões de controle da faixa (Mute/Lock)
         btn_lock = QPushButton("🔒")
         btn_lock.setFixedSize(20, 20)
+        btn_lock.setFocusPolicy(Qt.NoFocus)
         btn_lock.setStyleSheet("background: transparent; border: none; color: #888;")
         l.addWidget(btn_lock)
 

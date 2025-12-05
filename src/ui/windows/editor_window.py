@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QFileDialog, QProgressDialog, QMessageBox, QScrollArea
 from PySide6.QtCore import Qt, Signal, QTimer, QTime
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtMultimedia import QMediaPlayer
 
 # Componentes
@@ -126,6 +127,19 @@ class EditorWindow(QMainWindow):
         self.video_player.mediaStatusChanged.connect(self.on_media_status_changed)
         self.video_player.errorOccurred.connect(self.on_player_error)
 
+        # Opções de Playback
+        self.seek_step_seconds = 2.0 # Variável para controlar o pulo via teclado
+
+        # --- ATALHOS GLOBAIS (QShortcuts tem prioridade sobre foco) ---
+        self.play_shortcut = QShortcut(QKeySequence(Qt.Key_Space), self)
+        self.play_shortcut.activated.connect(self.video_player.toggle_play)
+        
+        self.left_shortcut = QShortcut(QKeySequence(Qt.Key_Left), self)
+        self.left_shortcut.activated.connect(self._on_left_key)
+        
+        self.right_shortcut = QShortcut(QKeySequence(Qt.Key_Right), self)
+        self.right_shortcut.activated.connect(self._on_right_key)
+
     def set_dirty(self, dirty: bool):
         self.is_dirty = dirty
         self.top_bar.set_dirty_state(dirty)
@@ -191,11 +205,45 @@ class EditorWindow(QMainWindow):
     def on_thumbnail_generated(self, path, index, qimage):
         self.timeline.add_thumbnail(path, index, qimage)
 
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Space:
-            self.video_player.toggle_play()
-        else:
-            super().keyPressEvent(event)
+    # ... (métodos auxiliares)
+
+    def _on_left_key(self):
+        # Retroceder X segundos
+        new_time = max(0.0, self.current_local_time - self.seek_step_seconds)
+        self.perform_seek_shortcut(new_time)
+
+    def _on_right_key(self):
+        # Avançar X segundos
+        if self.current_video_index != -1:
+            videos = self.project_data.get("arquivosDeVideo", [])
+            if self.current_video_index < len(videos):
+                vid = videos[self.current_video_index]
+                dur = vid.get("duracao", 0) if isinstance(vid, dict) else vid.duration
+                
+                new_time = min(dur, self.current_local_time + self.seek_step_seconds)
+                self.perform_seek_shortcut(new_time)
+
+    def perform_seek_shortcut(self, local_time):
+        """Helper para executar seek via atalho mantendo contexto global"""
+        if self.current_video_index == -1: return
+
+        # Calcular Tempo Global para atualizar Timeline corretamente
+        global_offset = 0.0
+        videos = self.project_data.get("arquivosDeVideo", [])
+        for i, vid in enumerate(videos):
+            if i == self.current_video_index:
+                break
+            dur = vid.get("duracao", 0) if isinstance(vid, dict) else vid.duration
+            global_offset += dur
+            
+        global_time = global_offset + local_time
+        
+        # Chama o handler padrão de seek (mesma lógica do clique)
+        # Force pause? Geralmente edição frame-a-frame ou seek curto prefere manter o estado ou pausar?
+        # Vamos manter o estado atual (se estava tocando, continua? ou pausa?)
+        # O user pediu "pular", comportamento padrão de editores é seek e pause ou seek e play.
+        # Vamos fazer seek simples. Se estiver tocando, vai pular e continuar.
+        self.handle_seek_request(self.current_video_index, local_time, global_time, force_pause=False)
 
     # --- LÓGICA DE PLAYBACK E SEEK ---
     # --- CALLBACKS DO PLAYER ---
@@ -475,6 +523,11 @@ class EditorWindow(QMainWindow):
         dialog = ProjectSettingsDialog(self.project_data, self)
         dialog.settings_saved.connect(self.on_settings_saved)
         dialog.exec()
+        
+        # Garante que o foco volte para a timeline/janela principal ao fechar
+        # Isso evita que o foco fique "perdido" ou em um botão da TopBar
+        self.setFocus()
+        self.timeline.setFocus()
 
     def on_settings_saved(self, new_data):
         self.project_data = new_data

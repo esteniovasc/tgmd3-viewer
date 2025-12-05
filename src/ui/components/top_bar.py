@@ -22,6 +22,7 @@ class TopBar(QFrame):
         self.btn_home = QPushButton("🏠") # Placeholder
         self.btn_home.setFixedSize(40, 40)
         self.btn_home.setCursor(Qt.PointingHandCursor)
+        self.btn_home.setFocusPolicy(Qt.NoFocus) # Impede captura de foco
         self.btn_home.setStyleSheet("""
             QPushButton { background-color: transparent; border: none; font-size: 24px; }
             QPushButton:hover { background-color: #3E3E42; border-radius: 5px; }
@@ -41,6 +42,7 @@ class TopBar(QFrame):
         self.btn_save = QPushButton("💾") # Placeholder
         self.btn_save.setFixedSize(40, 40)
         self.btn_save.setCursor(Qt.PointingHandCursor)
+        self.btn_save.setFocusPolicy(Qt.NoFocus)
         self.btn_save.setStyleSheet("""
             QPushButton { background-color: transparent; border: none; font-size: 24px; }
             QPushButton:hover { background-color: #3E3E42; border-radius: 5px; }
@@ -77,6 +79,7 @@ class TopBar(QFrame):
         self.btn_config = QPushButton("⚙️") # Placeholder
         self.btn_config.setFixedSize(40, 40)
         self.btn_config.setCursor(Qt.PointingHandCursor)
+        self.btn_config.setFocusPolicy(Qt.NoFocus)
         self.btn_config.setStyleSheet("""
             QPushButton { background-color: transparent; border: none; font-size: 24px; }
             QPushButton:hover { background-color: #3E3E42; border-radius: 5px; }
@@ -93,6 +96,7 @@ class TopBar(QFrame):
         self.btn_exit = QPushButton("🚪") # Placeholder
         self.btn_exit.setFixedSize(40, 40)
         self.btn_exit.setCursor(Qt.PointingHandCursor)
+        self.btn_exit.setFocusPolicy(Qt.NoFocus)
         self.btn_exit.setStyleSheet("""
             QPushButton { background-color: transparent; border: none; font-size: 24px; }
             QPushButton:hover { background-color: #3E3E42; border-radius: 5px; }
