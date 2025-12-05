@@ -105,6 +105,12 @@ class VideoPlayerWidget(QWidget):
     def pause(self):
         self.player.pause()
 
+    def toggle_play(self):
+        if self.player.playbackState() == QMediaPlayer.PlayingState:
+            self.player.pause()
+        else:
+            self.player.play()
+
     def set_position(self, position):
         self.player.setPosition(position)
         

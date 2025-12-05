@@ -10,6 +10,7 @@ from src.ui.components.export_panel import ExportPanelWidget
 from src.ui.components.timeline_widget import TimelineWidget
 from src.ui.components.track_header_widget import TrackHeaderWidget
 from src.workers.video_import_worker import VideoImportWorker
+from src.workers.thumbnail_worker import ThumbnailWorker
 
 class EditorWindow(QMainWindow):
     home_requested = Signal() 
@@ -173,10 +174,25 @@ class EditorWindow(QMainWindow):
         self.timeline.set_videos(self.project_data["arquivosDeVideo"])
         
         # Se for o primeiro vídeo, carregar
+        # Se for o primeiro vídeo, carregar
         if self.current_video_index == -1 and self.project_data["arquivosDeVideo"]:
             self.load_video_at_index(0)
         
+        # Iniciar Geração de Thumbnails
+        self.thumb_worker = ThumbnailWorker(new_videos)
+        self.thumb_worker.thumbnail_generated.connect(self.on_thumbnail_generated)
+        self.thumb_worker.start()
+        
         print(f"Importados {len(new_videos)} vídeos.")
+
+    def on_thumbnail_generated(self, path, index, qimage):
+        self.timeline.add_thumbnail(path, index, qimage)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Space:
+            self.video_player.toggle_play()
+        else:
+            super().keyPressEvent(event)
 
     # --- LÓGICA DE PLAYBACK E SEEK ---
     def handle_seek_request(self, video_index, local_time, global_time):

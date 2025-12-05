@@ -51,9 +51,11 @@ class TimelineWidget(QWidget):
         self.annotations = annotations_data
         self.update()
 
-    def add_thumbnail(self, path, index, pixmap):
+    def add_thumbnail(self, path, index, qimage):
         if path not in self.thumbnails: self.thumbnails[path] = {}
-        self.thumbnails[path][index] = pixmap
+        # Converte QImage para QPixmap para desenhar
+        from PySide6.QtGui import QPixmap
+        self.thumbnails[path][index] = QPixmap.fromImage(qimage)
         self.update()
 
     def clear_thumbnails(self):
@@ -76,12 +78,25 @@ class TimelineWidget(QWidget):
             painter.end()
             return
 
-        # 1. Calcular Zoom Dinâmico
-        # Viewport padrão de 30s
+        # 1. Calcular Zoom Dinâmico e Largura Total
+        # Pega a largura do viewport (a area visível do scroll), não o widget inteiro
+        # Quando setWidget é usado no QScrollArea, o parent() é o viewport.
+        viewport_width = self.parent().width() if self.parent() else self.width()
         viewport_duration = 30.0
-        # Tolerância mínima para evitar divisao por zero ou widths estranhos
-        current_width = max(self.width(), 300) 
-        self.pixels_per_second = current_width / viewport_duration
+        
+        # Pixels por segundo base para mostrar 30s na tela
+        self.pixels_per_second = max(viewport_width / viewport_duration, 10.0) 
+        
+        # Define o tamanho total do widget para forçar o scroll
+        total_width = 0
+        for clip in self.clips:
+            dur = clip.get('duracao', 0) if isinstance(clip, dict) else clip.duration
+            total_width += dur * self.pixels_per_second
+            
+        # Margem extra e atualiza geometria
+        min_w = int(total_width + 100)
+        if self.minimumWidth() != min_w:
+            self.setMinimumWidth(min_w)
         
         # Altura de componentes
         ruler_y_end = RULER_HEIGHT
@@ -98,6 +113,10 @@ class TimelineWidget(QWidget):
             # --- Fundo do Clipe ---
             clip_rect = QRectF(current_x_offset, video_track_y, clip_width, THUMBNAIL_HEIGHT)
             
+            # Otimização: Só desenha se estiver visível (intersecção com evento de paint)
+            # Mas o paintEvent do widget dentro do scroll geralmente pede tudo ou região.
+            # Vamos desenhar tudo por simplicidade, o Qt faz clip do backend.
+            
             # (Alternar cores levemente para distinguir visualmente se não tiver thumbnails)
             bg_color = QColor("#007acc") if i % 2 == 0 else QColor("#006bbb")
             painter.setBrush(QBrush(bg_color))
@@ -109,19 +128,14 @@ class TimelineWidget(QWidget):
             painter.setPen(QPen(QColor("#888888")))
             
             # Intervalo de ticks da régua
-            # Se zoom muito pequeno, aumentar intervalo
             tick_interval = 1.0 
-            if self.pixels_per_second < 10: tick_interval = 5.0
             
             t = 0.0
             while t <= duration:
                 tick_x = current_x_offset + (t * self.pixels_per_second)
                 
-                # Se estiver fora da tela (otimização basica), skip?
-                # Por enquanto desenha tudo
-                
                 # Tique Maior (segundos inteiros)
-                if t % 5 == 0: 
+                if int(t) % 5 == 0: 
                     painter.drawLine(int(tick_x), 0, int(tick_x), 12)
                     painter.drawText(QPointF(tick_x + 2, 10), f"{int(t)}s")
                 else:
@@ -136,24 +150,26 @@ class TimelineWidget(QWidget):
                 for idx, pixmap in thumbs.items():
                     # idx é o indice do thumbnail (ex: 0, 1, 2...) baseado no intervalo
                     thumb_time = idx * THUMBNAIL_INTERVAL_SECONDS
-                    if thumb_time > duration: continue
+                    # if thumb_time > duration: continue # (Pode acontecer no ultimo)
                     
                     thumb_x = current_x_offset + (thumb_time * self.pixels_per_second)
                     thumb_w = THUMBNAIL_INTERVAL_SECONDS * self.pixels_per_second
                     
-                    # Ajuste para não vazar do clipe
+                    # Ajuste para não vazar do clipe (último thumb)
                     if thumb_time + THUMBNAIL_INTERVAL_SECONDS > duration:
                         thumb_w = (duration - thumb_time) * self.pixels_per_second
 
                     target_rect = QRectF(thumb_x, video_track_y, thumb_w, THUMBNAIL_HEIGHT)
                     
-                    painter.setClipRect(clip_rect) # Clipar no retângulo do vídeo pai
-                    painter.drawPixmap(target_rect.toRect(), pixmap)
-                    painter.setClipping(False)
+                    if thumb_w > 0:
+                        painter.setClipRect(clip_rect) # Clipar no retângulo do vídeo pai
+                        painter.drawPixmap(target_rect.toRect(), pixmap)
+                        painter.setClipping(False)
 
             # --- Labels ---
             painter.setPen(QPen(QColor("#FFFFFF")))
             name = clip.get('nome', f"Video {i+1}")
+            # Shadow no texto para ler sobre thumbnail
             painter.drawText(QPointF(current_x_offset + 5, video_track_y + 15), name)
 
             # --- Divisor Visual ---
