@@ -5,6 +5,9 @@ from PySide6.QtCore import Qt, Signal, QUrl
 
 class VideoPlayerWidget(QWidget):
     add_video_clicked = Signal()
+    positionChanged = Signal(int)
+    durationChanged = Signal(int)
+    mediaStatusChanged = Signal(QMediaPlayer.MediaStatus)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -76,6 +79,11 @@ class VideoPlayerWidget(QWidget):
         self.player.setAudioOutput(self.audio)
         self.player.setVideoOutput(self.video_surface)
         self.audio.setVolume(0)
+        
+        # Conexões
+        self.player.positionChanged.connect(self.positionChanged.emit)
+        self.player.durationChanged.connect(self.durationChanged.emit)
+        self.player.mediaStatusChanged.connect(self.mediaStatusChanged.emit)
 
         # Inicia no estado zero
         self.stack.setCurrentIndex(0)

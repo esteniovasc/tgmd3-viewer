@@ -102,6 +102,7 @@ class EditorWindow(QMainWindow):
         
         # Conexão crucial: Solicitação de Seek vinda da Timeline
         self.timeline.seek_requested.connect(self.handle_seek_request)
+        self.video_player.positionChanged.connect(self.on_player_position_changed)
         
         timeline_layout.addWidget(self.track_headers, stretch=8)
         timeline_layout.addWidget(self.timeline_scroll, stretch=92) # Agora adiciona o Scroll
@@ -195,6 +196,34 @@ class EditorWindow(QMainWindow):
             super().keyPressEvent(event)
 
     # --- LÓGICA DE PLAYBACK E SEEK ---
+    # --- CALLBACKS DO PLAYER ---
+    def on_player_position_changed(self, position_ms):
+        """Chamado continuamente enquanto o vídeo toca."""
+        if self.current_video_index == -1: return
+
+        # Converter para segundos
+        local_time_sec = position_ms / 1000.0
+        self.current_local_time = local_time_sec
+        
+        # Calcular Tempo Global
+        global_offset = 0.0
+        videos = self.project_data.get("arquivosDeVideo", [])
+        
+        for i, vid in enumerate(videos):
+            if i == self.current_video_index:
+                break
+            # Soma durações
+            dur = vid.get("duracao", 0) if isinstance(vid, dict) else vid.duration
+            global_offset += dur
+            
+        global_time = global_offset + local_time_sec
+        
+        # Atualiza Timeline
+        self.timeline.update_playhead_position(global_time)
+        
+        # Autoscroll
+        self.ensure_playhead_visible(global_time)
+
     def handle_seek_request(self, video_index, local_time, global_time, force_pause=False):
         print(f"Seek Solicitado: Vídeo {video_index} @ {local_time}s (Global: {global_time}s) Pause={force_pause}")
         
