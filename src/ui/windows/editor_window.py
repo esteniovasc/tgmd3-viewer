@@ -1,5 +1,6 @@
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QFileDialog, QProgressDialog, QMessageBox, QScrollArea
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QFileDialog, QProgressDialog, QMessageBox, QScrollArea
+from PySide6.QtCore import Qt, Signal, QTimer, QTime
+from PySide6.QtMultimedia import QMediaPlayer
 
 # Componentes
 from src.ui.components.top_bar import TopBar
@@ -122,7 +123,8 @@ class EditorWindow(QMainWindow):
         self.track_headers.video_add_clicked.connect(self.start_import_video)
         
         # Conexões do Player (Media Status)
-        # self.video_player.player.mediaStatusChanged.connect(self.on_media_status_changed) # Precisa expor o player ou sinal
+        self.video_player.mediaStatusChanged.connect(self.on_media_status_changed)
+        self.video_player.errorOccurred.connect(self.on_player_error)
 
     def set_dirty(self, dirty: bool):
         self.is_dirty = dirty
@@ -200,6 +202,10 @@ class EditorWindow(QMainWindow):
     def on_player_position_changed(self, position_ms):
         """Chamado continuamente enquanto o vídeo toca."""
         if self.current_video_index == -1: return
+        
+        # Evita que o playhead pule para 0 enquanto carregamos um novo vídeo
+        if hasattr(self, 'pending_seek_time'):
+            return
 
         # Converter para segundos
         local_time_sec = position_ms / 1000.0
@@ -275,31 +281,135 @@ class EditorWindow(QMainWindow):
         file_path = video_data["caminho"]
         self.current_video_index = index
         
-        # Conectar sinal de posição do player para atualizar a agulha e fazer auto-scroll
-        # self.video_player.position_changed.connect(...) <- Precisa expor
+        # Armazena estado - Adicionado tempo de inicio para UX
+        self.pending_seek_time = seek_time
+        self.pending_start_paused = start_paused
+        self.load_start_time = QTime.currentTime().msecsSinceStartOfDay()
         
-        # UI Feedback: Loading
-        self.video_player.pause()
+        print(f"DEBUG: Loading video {index} ({file_path}), seek={seek_time}")
+        
+        # UI Feedback
         self.video_player.show_loading(f"Carregando: {video_data['nome']}...")
+        QApplication.processEvents()
         
-        self._perform_load(file_path, seek_time, start_paused)
+        # Workaround para Seek Reverso: 
+        # Às vezes o player reutiliza o estado antigo se for rápido. Parar antes de carregar ajuda.
+        self.video_player.player.stop() 
+        self.video_player.load_video(file_path)
 
-    def _perform_load(self, path, seek_time, start_paused):
-        self.video_player.load_video(path)
-        self.video_player.set_position(int(seek_time * 1000))
+    # Nova lógica de status (Always-on Display + UX Delay)
+    def on_media_status_changed(self, status):
+        # BufferedMedia ou LoadedMedia: O player tem dados suficientes
+        if status == QMediaPlayer.MediaStatus.BufferedMedia or status == QMediaPlayer.MediaStatus.LoadedMedia:
+            if hasattr(self, 'pending_seek_time'):
+                print(f"DEBUG: Media Ready. Status={status}. Pending Seek={self.pending_seek_time}")
+                
+                pos_ms = int(self.pending_seek_time * 1000)
+                
+                # Calcular quanto tempo resta para completar o fake delay (2000ms)
+                MIN_LOAD_DURATION = 1000 # 1 segundos
+                elapsed = QTime.currentTime().msecsSinceStartOfDay() - self.load_start_time
+                remaining = max(0, MIN_LOAD_DURATION - elapsed)
+                
+                # Função interna para executar o seek e fechar loading
+                def perform_delayed_seek_and_hide():
+                     if not hasattr(self, 'video_player'): return
+                     
+                     # Verifica se ainda temos um seek pendente (evita race condition)
+                     if not hasattr(self, 'pending_seek_time'): return
+
+                     # Seek Efetivo
+                     self.video_player.set_position(pos_ms)
+                     
+                     start_paused = getattr(self, 'pending_start_paused', True)
+                     if start_paused:
+                          self.video_player.pause()
+                     else:
+                          self.video_player.play()
+                     
+                     print(f"DEBUG: Seek Executed to {pos_ms}ms")
+                     
+                     # Limpeza
+                     if hasattr(self, 'pending_seek_time'): del self.pending_seek_time
+                     if hasattr(self, 'pending_start_paused'): del self.pending_start_paused
+                     if hasattr(self, 'load_start_time'): del self.load_start_time
+                     
+                     # Remove loading SOMENTE AGORA
+                     self.video_player.hide_loading()
+
+                # Se o buffering foi rápido, esperamos o restante do tempo
+                # Se demorou mais que 2s, executa quase imediatamente (pequeno buffer de segurança)
+                delay_total = remaining + 50 
+                QTimer.singleShot(delay_total, perform_delayed_seek_and_hide)
+
+    def handle_seek_request(self, video_index, local_time, global_time, force_pause=False):
+        print(f"Seek Solicitado: Vídeo {video_index} @ {local_time}s (Global: {global_time}s) Pause={force_pause}")
         
-        # Aguardar um buffer mínimo? 
-        # Por simplificação, removemos o loading após um curto delay para garantir renderização
-        QTimer.singleShot(800, self.video_player.hide_loading)
+        # Atualiza o playhead visual imediatamente
+        self.timeline.update_playhead_position(global_time)
         
-        if not start_paused:
-            self.video_player.play()
+        # Scroll Inteligente: Apenas garante visibilidade (sem forçar centro, como pedido)
+        self.ensure_playhead_visible(global_time)
+        
+        if video_index != self.current_video_index:
+            # Troca de vídeo
+            # Delay aumentado levemente no load_video_at_index poderá ajudar na consistência
+            self.load_video_at_index(video_index, start_paused=True, seek_time=local_time)
+        else:
+            # Mesmo vídeo
+            if force_pause:
+                self.video_player.pause()
+            self.video_player.set_position(int(local_time * 1000))
+
+    def ensure_playhead_visible(self, global_time):
+        # Lógica de Paginação (Para Playback e Seek)
+        if not self.timeline.pixels_per_second: return
+        
+        playhead_x = global_time * self.timeline.pixels_per_second
+        scroll_bar = self.timeline_scroll.horizontalScrollBar()
+        current_scroll = scroll_bar.value()
+        viewport_width = self.timeline_scroll.viewport().width()
+        
+        # --- CONFIGURAÇÃO DO SALTO ---
+        # Porcentagem da tela onde o salto ocorre (ex: 95% da tela)
+        SCROLL_TRIGGER_PERCENT = 0.95 
+        
+        # Onde a agulha deve cair na NOVA tela após o salto (ex: 2% da esquerda)
+        # Isso garante que ela não fique escondida na esquerda
+        NEW_VIEW_START_PERCENT = 0.02
+        
+        # Margem de segurança para retrocesso (ex: se voltar antes do inicio, mostra inicio)
+        # -----------------------------
+
+        # Limite direito para trigger
+        threshold_right = current_scroll + (viewport_width * SCROLL_TRIGGER_PERCENT)
+        
+        if playhead_x > threshold_right:
+             # SALTO PARA FRENTE
+             # Calcula o novo scroll de forma que a agulha fique no inicio da tela (NEW_VIEW_START_PERCENT)
+             target_scroll = playhead_x - (viewport_width * NEW_VIEW_START_PERCENT)
+             scroll_bar.setValue(int(target_scroll))
+             
+        elif playhead_x < current_scroll:
+             # SALTO PARA TRÁS (Se a agulha saiu pela esquerda)
+             # Centraliza ou coloca no fim? Vamos colocar no meio para contexto
+             target_scroll = playhead_x - (viewport_width * 0.5)
+             scroll_bar.setValue(max(0, int(target_scroll)))
+
+    def ensure_playhead_centered(self, global_time):
+        # (Mantido como utilitário caso queira usar no futuro, mas desligado do fluxo principal)
+        if not self.timeline.pixels_per_second: return
+        playhead_x = global_time * self.timeline.pixels_per_second
+        viewport_width = self.timeline_scroll.viewport().width()
+        target_scroll = playhead_x - (viewport_width / 2)
+        self.timeline_scroll.horizontalScrollBar().setValue(max(0, int(target_scroll)))
+
+    def on_player_error(self, error):
+        print(f"Erro no player: {error}")
+        self.video_player.show_error(f"Erro ao carregar mídia.")
 
     # --- LÓGICA DE LIMPEZA ---
     def reset_ui_state(self):
-        """Reseta toda a interface para o estado inicial."""
-        self.video_player.reset()
-        self.timeline.reset()
         
         if hasattr(self, 'import_worker') and self.import_worker.isRunning():
             self.import_worker.terminate()

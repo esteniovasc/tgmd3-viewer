@@ -8,6 +8,7 @@ class VideoPlayerWidget(QWidget):
     positionChanged = Signal(int)
     durationChanged = Signal(int)
     mediaStatusChanged = Signal(QMediaPlayer.MediaStatus)
+    errorOccurred = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -73,6 +74,35 @@ class VideoPlayerWidget(QWidget):
         
         self.stack.addWidget(self.loading_page) # Index 2
 
+        # --- Página 3: Erro / Placeholder ---
+        self.error_page = QWidget()
+        self.error_page.setStyleSheet("background-color: #111; border-radius: 8px;")
+        error_layout = QVBoxLayout(self.error_page)
+        error_layout.setAlignment(Qt.AlignCenter)
+        
+        # Tenta carregar imagem logo
+        # Import local para evitar circular se config usar widget
+        from src.config import ASSETS_DIR
+        import os
+        logo_path = os.path.join(ASSETS_DIR, "splash_logo.png")
+        
+        self.lbl_error_icon = QLabel()
+        if os.path.exists(logo_path):
+             from PySide6.QtGui import QPixmap
+             pix = QPixmap(logo_path).scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+             self.lbl_error_icon.setPixmap(pix)
+        else:
+             self.lbl_error_icon.setText("⚠️")
+             self.lbl_error_icon.setStyleSheet("font-size: 48px;")
+             
+        error_layout.addWidget(self.lbl_error_icon, 0, Qt.AlignCenter)
+        
+        self.lbl_error_msg = QLabel("Vídeo Indisponível")
+        self.lbl_error_msg.setStyleSheet("color: #FF5252; font-size: 16px; margin-top: 10px;")
+        error_layout.addWidget(self.lbl_error_msg, 0, Qt.AlignCenter)
+        
+        self.stack.addWidget(self.error_page) # Index 3
+
         # Mídia Player
         self.player = QMediaPlayer()
         self.audio = QAudioOutput()
@@ -84,30 +114,36 @@ class VideoPlayerWidget(QWidget):
         self.player.positionChanged.connect(self.positionChanged.emit)
         self.player.durationChanged.connect(self.durationChanged.emit)
         self.player.mediaStatusChanged.connect(self.mediaStatusChanged.emit)
+        self.player.errorOccurred.connect(self.errorOccurred.emit)
 
         # Inicia no estado zero
         self.stack.setCurrentIndex(0)
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
+    # ... resizeEvent ...
 
     def set_has_video(self, has_video: bool):
-        # Se tiver vídeo mas não estiver carregando, vai pro player (1), senão zero (0)
-        if self.stack.currentIndex() != 2:
+        # Se tiver vídeo mas não estiver carregando/erro, vai pro player (1), senão zero (0)
+        idx = self.stack.currentIndex()
+        if idx != 2 and idx != 3:
             self.stack.setCurrentIndex(1 if has_video else 0)
 
     def show_loading(self, message="Carregando..."):
         self.lbl_loading.setText(message)
         self.stack.setCurrentIndex(2)
 
+    def show_error(self, message="Erro ao carregar vídeo"):
+        self.lbl_error_msg.setText(message)
+        self.stack.setCurrentIndex(3)
+
     def hide_loading(self):
-        # Retorna para o Video Player
-        self.stack.setCurrentIndex(1)
+        # Se não estiver em erro, volta pro player
+        if self.stack.currentIndex() != 3:
+            self.stack.setCurrentIndex(1)
 
     def reset(self):
         self.player.stop()
         self.player.setSource(QUrl())
-        self.hide_loading()
+        self.stack.setCurrentIndex(0) # Força volta pro zero
         self.set_has_video(False)
 
     def load_video(self, file_path):
