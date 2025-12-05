@@ -103,40 +103,31 @@ class TopBar(QFrame):
     def set_project_name(self, name):
         self.lbl_project_name.setText(name)
 
+    def set_dirty_state(self, is_dirty):
+        current_text = self.lbl_project_name.text()
+        if is_dirty:
+            if not current_text.startswith("* "):
+                self.lbl_project_name.setText(f"* {current_text}")
+            self.lbl_last_saved.setText("Alterações não salvas (Pendente) ⚠️")
+            self.lbl_project_name.setStyleSheet("font-weight: bold; color: #FFD700; font-size: 16px;") # Dourado para alerta
+        else:
+            if current_text.startswith("* "):
+                self.lbl_project_name.setText(current_text[2:])
+            self.lbl_project_name.setStyleSheet("font-weight: bold; color: white; font-size: 16px;")
+            self.update_last_saved()
+
     def update_last_saved(self):
         current_time = QDateTime.currentDateTime().toString("HH:mm")
         self.lbl_last_saved.setText(f"Última modificação salva às {current_time} ✅")
 
     def on_home_click(self):
-        reply = QMessageBox.question(
-            self, "Salvar Projeto", 
-            "Deseja salvar o projeto antes de voltar para o início?",
-            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
-            QMessageBox.Yes
-        )
-
-        if reply == QMessageBox.Yes:
-            self.save_clicked.emit()
-            self.home_clicked.emit()
-        elif reply == QMessageBox.No:
-            self.home_clicked.emit()
-        # Cancel faz nada
+        # A responsabilidade de verificar se pode sair é da Janela Principal
+        self.home_clicked.emit()
 
     def on_save_click(self):
         self.save_clicked.emit()
-        self.update_last_saved()
+        # update_last_saved será chamado pelo controller após sucesso
 
     def on_exit_click(self):
-        reply = QMessageBox.question(
-            self, "Sair", 
-            "Deseja salvar o projeto e sair?",
-            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
-            QMessageBox.Yes
-        )
-
-        if reply == QMessageBox.Yes:
-            self.save_clicked.emit()
-            self.exit_clicked.emit()
-        elif reply == QMessageBox.No:
-            self.exit_clicked.emit()
-        # Cancel faz nada
+        # A responsabilidade de verificar se pode sair é da Janela Principal
+        self.exit_clicked.emit()

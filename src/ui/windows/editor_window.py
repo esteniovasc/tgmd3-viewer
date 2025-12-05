@@ -1,5 +1,5 @@
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QFileDialog, QProgressDialog, QMessageBox
+from PySide6.QtCore import Qt, Signal, QTimer
 
 # Componentes
 from src.ui.components.top_bar import TopBar
@@ -9,6 +9,7 @@ from src.ui.components.skill_list_widget import SkillListWidget
 from src.ui.components.export_panel import ExportPanelWidget
 from src.ui.components.timeline_widget import TimelineWidget
 from src.ui.components.track_header_widget import TrackHeaderWidget
+from src.workers.video_import_worker import VideoImportWorker
 
 class EditorWindow(QMainWindow):
     home_requested = Signal() 
@@ -94,6 +95,81 @@ class EditorWindow(QMainWindow):
 
         self.project_data = {}
         self.project_file_path = None
+        self.is_dirty = False
+        
+        # Conexões de Importação
+        self.video_player.add_video_clicked.connect(self.start_import_video)
+        self.track_headers.video_add_clicked.connect(self.start_import_video)
+
+    def set_dirty(self, dirty: bool):
+        self.is_dirty = dirty
+        self.top_bar.set_dirty_state(dirty)
+
+    def closeEvent(self, event):
+        if not self.check_save_barrier():
+            event.ignore()
+        else:
+            event.accept()
+
+    def check_save_barrier(self) -> bool:
+        """Retorna True se puder fechar/sair, False se cancelado."""
+        if not self.is_dirty:
+            return True
+            
+        reply = QMessageBox.question(
+            self, "Alterações não salvas", 
+            "Há alterações não salvas no projeto. Deseja salvar antes de sair?",
+            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Save
+        )
+        
+        if reply == QMessageBox.Save:
+            self.save_project()
+            return True # Assumindo que save_project é síncrono ou sucesso garantido por enquanto
+        elif reply == QMessageBox.Discard:
+            return True
+        else:
+            return False
+
+    def start_import_video(self):
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self, "Importar Vídeos", "", "Arquivos de Vídeo (*.mp4 *.avi *.mov *.mkv)"
+        )
+        
+        if not file_paths:
+            return
+            
+        # Modal de Progresso
+        self.progress_dialog = QProgressDialog("Processando vídeos...", "Cancelar", 0, len(file_paths), self)
+        self.progress_dialog.setWindowModality(Qt.WindowModal)
+        self.progress_dialog.setWindowFlags(Qt.Dialog | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
+        self.progress_dialog.setMinimumDuration(0)
+        self.progress_dialog.setValue(0)
+        
+        # Worker
+        self.import_worker = VideoImportWorker(file_paths)
+        self.import_worker.progress.connect(self.progress_dialog.setValue)
+        self.import_worker.finished.connect(self.on_import_finished)
+        self.import_worker.start()
+        
+    def on_import_finished(self, new_videos):
+        self.progress_dialog.close()
+        
+        if not new_videos:
+            return
+
+        # Adicionar ao JSON Project Data
+        if "arquivosDeVideo" not in self.project_data:
+            self.project_data["arquivosDeVideo"] = []
+            
+        self.project_data["arquivosDeVideo"].extend(new_videos)
+        
+        # Atualizar Estado
+        self.set_dirty(True)
+        self.video_player.set_has_video(True) # Simplesmente liga o player se tiver vídeo
+        
+        # TODO: Atualizar Timeline aqui
+        print(f"Importados {len(new_videos)} vídeos.")
 
     def load_project_data(self, data, file_path=None):
         """Recebe os dados do JSON carregado e atualiza a UI"""
@@ -108,12 +184,14 @@ class EditorWindow(QMainWindow):
         # self.timeline.set_data(data.get("arquivosDeVideo", []), [])
 
     def on_home_clicked(self):
-        self.home_requested.emit()
-        self.close()
+        if self.check_save_barrier():
+            self.home_requested.emit()
+            self.close()
 
     def save_project(self):
         import json
         if not hasattr(self, 'project_file_path') or not self.project_file_path:
+            # TODO: Implementar Save As se não tiver path
             print("Erro: Caminho do arquivo não definido.")
             return
 
@@ -122,9 +200,11 @@ class EditorWindow(QMainWindow):
                 json.dump(self.project_data, f, indent=2, ensure_ascii=False)
             
             self.top_bar.update_last_saved()
+            self.set_dirty(False) # Limpa o estado dirty após salvar
             print("Projeto salvo com sucesso!")
         except Exception as e:
             print(f"Erro ao salvar projeto: {e}")
+            QMessageBox.critical(self, "Erro", f"Falha ao salvar projeto: {str(e)}")
 
     def open_settings(self):
         from src.ui.dialogs.project_settings_dialog import ProjectSettingsDialog

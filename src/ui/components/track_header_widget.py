@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QFrame, QHBoxLayout, QPushButton)
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from src.config import RULER_HEIGHT, ANNOTATION_TRACK_HEIGHT, THUMBNAIL_HEIGHT
 
 class TrackHeaderWidget(QWidget):
@@ -31,6 +31,8 @@ class TrackHeaderWidget(QWidget):
 
         layout.addStretch()
 
+    video_add_clicked = Signal()
+    
     def _create_track_header(self, title, height, color_code):
         frame = QFrame()
         frame.setFixedHeight(height)
@@ -48,6 +50,20 @@ class TrackHeaderWidget(QWidget):
         l.addWidget(lbl)
         
         l.addStretch()
+        
+        # Botão Adicionar Video (Apenas na track de video)
+        if "Vídeo" in title:
+            btn_add = QPushButton("+")
+            btn_add.setFixedSize(20, 20)
+            btn_add.setCursor(Qt.PointingHandCursor)
+            # Verde sutil para ação positiva
+            btn_add.setStyleSheet("""
+                QPushButton { background-color: #2E7D32; border: none; color: white; border-radius: 2px; }
+                QPushButton:hover { background-color: #388E3C; }
+            """)
+            btn_add.setToolTip("Adicionar Vídeo")
+            btn_add.clicked.connect(self.video_add_clicked.emit)
+            l.addWidget(btn_add)
         
         # Botões de controle da faixa (Mute/Lock)
         btn_lock = QPushButton("🔒")
