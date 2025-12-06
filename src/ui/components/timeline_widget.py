@@ -6,8 +6,11 @@ from PySide6.QtWidgets import QWidget, QMenu
 from config import (
     THUMBNAIL_HEIGHT, ANNOTATION_TRACK_HEIGHT,
     RULER_HEIGHT, THUMBNAIL_INTERVAL_SECONDS,
-    RULER_TICK_HEIGHT, CLIP_DIVIDER_WIDTH
+    RULER_TICK_HEIGHT, CLIP_DIVIDER_WIDTH,
+    ASSETS_DIR, SKILLS
 )
+import os
+from PySide6.QtGui import QPixmap
 
 class TimelineWidget(QWidget):
     # (video_index, local_time, global_time, force_pause)
@@ -179,7 +182,12 @@ class TimelineWidget(QWidget):
             painter.setPen(QPen(QColor("#FFFFFF")))
             name = clip.get('nome', f"Video {i+1}")
             # Shadow no texto para ler sobre thumbnail
+            # Shadow no texto para ler sobre thumbnail
             painter.drawText(QPointF(current_x_offset + 5, video_track_y + 15), name)
+
+
+
+
 
             # --- Divisor Visual ---
             if i < len(self.clips) - 1:
@@ -189,6 +197,51 @@ class TimelineWidget(QWidget):
 
             # Avançar cursor global
             current_x_offset += clip_width
+
+        # --- Annotations (Labels) ---
+        annotation_y = RULER_HEIGHT
+        annotation_h = ANNOTATION_TRACK_HEIGHT
+        painter.setFont(QFont("Arial", 9, QFont.Bold))
+        
+        for ann in self.annotations:
+            start_time = ann.get('time', 0)
+            duration = ann.get('duration', 3.0) 
+            text = ann.get('text', 'Label')
+            
+            # Retrieve style info
+            bg_color = ann.get('color', "#4CAF50")
+            icon_path = ann.get('icon_path', "")
+            
+            # Only show Name (split if "Index. Name")
+            display_text = text.split(". ", 1)[1] if ". " in text else text
+            
+            ann_x = start_time * self.pixels_per_second
+            ann_w = duration * self.pixels_per_second
+            
+            ann_rect = QRectF(ann_x, annotation_y + 5, ann_w, annotation_h - 10)
+            
+            # Draw Box
+            painter.setBrush(QBrush(QColor(bg_color)))
+            painter.setPen(QPen(QColor("#333"), 1)) # Darker border
+            painter.drawRoundedRect(ann_rect, 6, 6)
+            
+            # Draw Icon
+            icon_rect_w = 24
+            if icon_path and os.path.exists(icon_path):
+                # Load on fly (optimization: cache later)
+                pixmap = QPixmap(icon_path)
+                target_icon_rect = QRectF(ann_x + 5, annotation_y + 5 + (annotation_h - 10 - icon_rect_w)/2, icon_rect_w, icon_rect_w)
+                painter.drawPixmap(target_icon_rect.toRect(), pixmap.scaled(icon_rect_w, icon_rect_w, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            
+            # Draw Separator Pipe
+            separator_x = ann_x + 5 + icon_rect_w + 5
+            painter.setPen(QPen(QColor("#000"), 1))
+            painter.drawLine(int(separator_x), int(annotation_y + 10), int(separator_x), int(annotation_y + annotation_h - 10))
+            
+            # Draw Text
+            text_rect = QRectF(separator_x + 5, annotation_y + 5, ann_w - (separator_x - ann_x) - 5, annotation_h - 10)
+            painter.setPen(QColor("black")) # Text black for contrast on pastel
+            painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, display_text)
 
         # --- Agulha ---
         # Desenhar agulha na posição global
@@ -204,30 +257,147 @@ class TimelineWidget(QWidget):
         painter.end()
 
     def mouseMoveEvent(self, event):
-        # Feedback visual do cursor
-        if event.position().y() <= RULER_HEIGHT:
+        # 1. Resize Logic
+        if self.resizing_annotation is not None:
+            ann = self.annotations[self.resizing_annotation]
+            delta_pixels = event.position().x() - self.drag_start_pos
+            delta_time = delta_pixels / self.pixels_per_second if self.pixels_per_second > 0 else 0
+            
+            init_time = self.initial_ann_state['time']
+            init_dur = self.initial_ann_state['duration']
+            
+            if self.resize_edge == 'right':
+                # Constraint: cannot go past video end
+                bounds = self._get_video_bounds(init_time)
+                video_end = bounds[2] if bounds else (init_time + 1000)
+                
+                new_end = init_time + max(0.5, init_dur + delta_time)
+                if new_end > video_end:
+                   new_end = video_end
+                   
+                new_dur = new_end - init_time
+                ann['duration'] = max(0.5, new_dur)
+                
+            elif self.resize_edge == 'left':
+                bounds = self._get_video_bounds(init_time)
+                video_start = bounds[1] if bounds else 0
+                
+                # Cannot move start past end (minus min dur)
+                # Max start time = init_time + init_dur - 0.5
+                new_start = init_time + delta_time
+                
+                if new_start < video_start:
+                    new_start = video_start
+                    
+                if new_start > init_time + init_dur - 0.5:
+                    new_start = init_time + init_dur - 0.5
+                
+                if new_start < 0: new_start = 0
+                
+                # Duration change = (old_end - new_start)
+                old_end = init_time + init_dur
+                new_dur = old_end - new_start
+                
+                ann['time'] = new_start
+                ann['duration'] = new_dur
+                
+            self.update()
+            return
+
+        # 2. Hover Logic
+        y = event.position().y()
+        x = event.position().x()
+        
+        # Check hover over annotations
+        ann_idx = self._get_annotation_at(x, y)
+        if ann_idx is not None:
+            edge = self._get_resize_edge(ann_idx, x)
+            if edge:
+                self.setCursor(Qt.SizeHorCursor)
+            else:
+                self.setCursor(Qt.PointingHandCursor)
+        elif y <= RULER_HEIGHT:
             self.setCursor(Qt.PointingHandCursor)
         else:
             self.setCursor(Qt.ArrowCursor)
+            
         super().mouseMoveEvent(event)
 
     def mousePressEvent(self, event):
-        # Clique Único
         if event.button() == Qt.MouseButton.LeftButton:
-            # Regra: Só faz seek imediato se for na Régua (Topo)
+            x = event.position().x()
+            y = event.position().y()
+            
+            # Check interaction with annotation first
+            ann_idx = self._get_annotation_at(x, y)
+            if ann_idx is not None:
+                # Check for resize attempt
+                edge = self._get_resize_edge(ann_idx, x)
+                if edge:
+                    self.resizing_annotation = ann_idx
+                    self.resize_edge = edge
+                    self.drag_start_pos = x
+                    self.initial_ann_state = self.annotations[ann_idx].copy()
+                    return # Consume event
+            
+            # Regra: Só faz seek na Régua
             if event.position().y() <= RULER_HEIGHT:
                 self._process_seek(event.position().x(), force_pause=False)
-            else:
-                # Clique nos trilhos -> Ignorar seek, apenas seleção (futuro)
-                pass
+    
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+             self.resizing_annotation = None
+             self.resize_edge = None
+        super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event):
-        # Duplo Clique
         if event.button() == Qt.MouseButton.LeftButton:
-            # Regra: Se for nos trilhos, faz seek.
+            x = event.position().x()
+            y = event.position().y()
+            
+            # 1. Double Click on Annotation -> Seek to Start
+            ann_idx = self._get_annotation_at(x, y)
+            if ann_idx is not None:
+                 ann_time = self.annotations[ann_idx].get('time', 0)
+                 # Force seek to this global timestmap
+                 # We need to reverse map global time to video index
+                 self._seek_to_global(ann_time)
+                 return
+
+            # 2. Double Click on Track -> Regular Seek
             if event.position().y() > RULER_HEIGHT:
-                # Assumimos comportamento "Vazio/Thumb" -> force_pause=False
                 self._process_seek(event.position().x(), force_pause=False)
+                
+    def _seek_to_global(self, global_seconds):
+        # Similar logic to process seek but for exact value
+        if not self.clips: return
+        
+        t = global_seconds
+        current_dur_sum = 0
+        target_idx = -1
+        local_t = 0
+        
+        # Calculate total duration first to avoid scope confusion? 
+        # Better to just iterate and break.
+        
+        total_duration = 0
+        for clip in self.clips:
+             total_duration += clip.get('duracao', 0) if isinstance(clip, dict) else clip.duration
+
+        if t >= total_duration:
+             target_idx = len(self.clips) - 1
+             local_t = 0 # Or end
+        else:
+            for i, clip in enumerate(self.clips):
+                dur = clip.get('duracao', 0) if isinstance(clip, dict) else clip.duration
+                if current_dur_sum <= t < current_dur_sum + dur:
+                    target_idx = i
+                    local_t = t - current_dur_sum
+                    break
+                current_dur_sum += dur
+             
+        if target_idx != -1:
+            self.seek_requested.emit(target_idx, local_t, t, True) # Force pause usually nice for jumping
 
     def _process_seek(self, mouse_x, force_pause):
         if not self.clips: return
@@ -259,5 +429,151 @@ class TimelineWidget(QWidget):
             self.seek_requested.emit(target_video_index, local_time, click_time, force_pause)
 
     # Manter stubs
-    def dragEnterEvent(self, event): pass
-    def dropEvent(self, event): pass
+    # --- Drag & Drop Implementation ---
+    
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasText():
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        # Check if drop zone is within the Annotation Track
+        y = event.position().y()
+        if RULER_HEIGHT <= y <= (RULER_HEIGHT + ANNOTATION_TRACK_HEIGHT):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        if event.mimeData().hasText():
+            text = event.mimeData().text()
+            x = event.position().x()
+            
+            # Calculate time
+            if self.pixels_per_second > 0:
+                time = x / self.pixels_per_second
+                
+                # Resolve Style
+                # Parse index from text "1. SkillName"
+                idx = -1
+                if ". " in text:
+                    try:
+                        idx = int(text.split(". ")[0]) - 1 # 0-based
+                    except:
+                        pass
+                
+                # Fallback: Lookup name in SKILLS list
+                if idx == -1:
+                    try:
+                        # Normalize text (remove "1. " if parse failed but it exists, or just use text)
+                        clean_text = text
+                        if ". " in text: clean_text = text.split(". ", 1)[1]
+                        
+                        if clean_text in SKILLS:
+                            idx = SKILLS.index(clean_text)
+                    except: pass
+                
+                bg_color, icon_path = self._get_skill_style(idx)
+                
+                # Enforce Video Boundaries on Drop
+                # Get bounds for the drop time
+                bounds = self._get_video_bounds(time)
+                if bounds:
+                    video_idx, v_start, v_end = bounds
+                    
+                    # If drop time + default duration > video end, shift it left
+                    if time + 3.0 > v_end:
+                         time = max(v_start, v_end - 3.0)
+                         
+                    # Clamp duration if still doesn't fit (short video)
+                    duration = min(3.0, v_end - time)
+                else:
+                    duration = 3.0 # Fallback
+                
+                # Create annotation
+                new_ann = {
+                    'time': time,
+                    'text': text,
+                    'duration': duration, 
+                    'color': bg_color,
+                    'icon_path': icon_path,
+                    'skill_index': idx
+                }
+                
+                self.annotations.append(new_ann)
+                self.update()
+                
+                # Notify (Can emit signal if controller needs to know)
+                # self.annotation_added.emit(new_ann)
+                
+            event.acceptProposedAction()
+
+    def _get_skill_style(self, index):
+        # 0-based index
+        # 0-5 (Skills 1-6) -> #FFCC84 (Muted Orange)
+        # 6-12 (Skills 7-13) -> #B9F5FF (Muted Cyan)
+        
+        if 0 <= index <= 5:
+            color = "#FFCC84"
+        elif 6 <= index <= 12:
+            color = "#B9F5FF"
+        else:
+            color = "#CCCCCC" # Default gray if unknown
+            
+        # Icon Mapping (Same as widget)
+        icon_files = [
+            "1-correr.png", "2-galopar.png", "3-saltar.png", "4-saltitar.png",
+            "5-saltar-horizontal.png", "6-deslizar.png", "7-rebater2maos.png", 
+            "8-rebater1mao.png", "9-quicar.png", "10-pegar.png", "11-chutar.png",
+            "13-lançar-por-baixo.png", "12-arremessar-por-cima.png"
+        ]
+        
+        icon_path = ""
+        if 0 <= index < len(icon_files):
+            icon_path = os.path.join(ASSETS_DIR, "icones_habilidades", icon_files[index])
+            
+        return color, icon_path
+
+    # --- Helpers for Interaction ---
+
+    def _get_annotation_at(self, x, y):
+        # Check Y range
+        min_y = RULER_HEIGHT
+        max_y = RULER_HEIGHT + ANNOTATION_TRACK_HEIGHT
+        if not (min_y <= y <= max_y):
+            return None
+            
+        # Check X range (timeline)
+        if self.pixels_per_second <= 0: return None
+        click_time = x / self.pixels_per_second
+        
+        # Reverse iterate (topmost first if overlap, though functionality assumes simple list)
+        for i in range(len(self.annotations) - 1, -1, -1):
+            ann = self.annotations[i]
+            start = ann.get('time', 0)
+            dur = ann.get('duration', 3.0)
+            if start <= click_time <= start + dur:
+                return i
+        return None
+
+    def _get_resize_edge(self, index, mouse_x):
+        # Return 'left', 'right' or None
+        ann = self.annotations[index]
+        start_x = ann.get('time', 0) * self.pixels_per_second
+        end_x = (ann.get('time', 0) + ann.get('duration', 3.0)) * self.pixels_per_second
+        
+        threshold = 8 # pixels
+        if abs(mouse_x - start_x) <= threshold:
+            return 'left'
+        if abs(mouse_x - end_x) <= threshold:
+            return 'right'
+        return None
+
+    def _get_video_bounds(self, global_time):
+        """Returns (video_index, start_global, end_global) for the video at global_time"""
+        current_dur_sum = 0
+        for i, clip in enumerate(self.clips):
+            dur = clip.get('duracao', 0) if isinstance(clip, dict) else clip.duration
+            if current_dur_sum <= global_time < current_dur_sum + dur:
+                return (i, current_dur_sum, current_dur_sum + dur)
+            current_dur_sum += dur
+        return None
